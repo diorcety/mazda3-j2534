@@ -207,7 +207,7 @@ class ExtendedUDS(object):
     def send_wdbi(self, did, data, timeout=2000):
         reply = self.send(uds.UDS_SERVICE_WDBI, self.int16tobytes(did) + data, timeout)
         data = reply.getData()
-        rdid = self.bytestoint16(self.slice_data(data, uds, 'UDS_RDBI_DATA_IDENTIFIER'))
+        rdid = self.bytestoint16(self.slice_data(data, uds, 'UDS_WDBI_DATA_IDENTIFIER'))
         if rdid != did:
             raise Exception("Invalid dataIdentifier %d for a request of type %d" % (rdid, did))
         return data[uds.UDS_RDBI_DATA_RECORD_OFFSET:]
