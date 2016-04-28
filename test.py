@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 # Fix Python 2.x.
 from __future__ import print_function
 
@@ -13,6 +15,7 @@ import uds
 import struct
 import seedkey
 import math
+
 
 ##
 ## For Windows platforms
@@ -73,17 +76,6 @@ class WinDiscover:
         except WindowsError:
             raise Exception("Device \"%s\" not found" % (device))
 
-def int16tobytes(number):
-    return struct.pack("<H", number)
-
-def bytestoint16(bytes):
-    return struct.unpack("<H", bytes)[0]
-
-def extract(data, module, field, offset_str = '_OFFSET', len_str = '_LEN'):
-    offset = getattr(module, field + offset_str)
-    len = getattr(module, field + len_str)
-    return data[offset:(offset + len)]
-
 
 class BitStream(object):
     @staticmethod
@@ -118,7 +110,7 @@ class BitStream(object):
     @staticmethod
     def _value_to_bits(value, length):
         bits = []
-        for x in xrange(length -1, -1, -1):
+        for x in xrange(length - 1, -1, -1):
             bits.append((value >> x) & 0x1)
         return bits
 
@@ -157,127 +149,152 @@ class BitStream(object):
     def set_value(self, offset, mask, value):
         self._set_value(self.bits, offset, mask, value)
 
+
 class NegativeResponseException(Exception):
     def __init__(self, reply):
         self.reply = reply
+
     def __str__(self):
         return "Error %d for service %d" % (self.reply.getErrorCode(), self.reply.getRequestServiceID())
 
-def send(udsChannel, sid, data, timeout = 2000):
-    fdata = bytearray([sid])
-    fdata.extend(data)
-    message = uds.UDSMessage(fdata)
-    print("Will send: %s" % (" ".join(['%02x' % (k) for k in fdata])))
-    response = input("Are you sure to send this? ")
-    if response != 'YES':
-        raise Exception("Interrupted by the user")
-    print("Sending: %s" % (" ".join(['%02x' % (k) for k in fdata])))
-    reply = udsChannel.send(message, timeout)
-    print("Received: %s" % (" ".join(['%02x' % (k) for k in reply.getData()])))
-    if isinstance(reply, uds.UDSNegativeResponseMessage):
-        raise NegativeResponseException(reply)
-    if reply.getServiceID() != (sid | uds.UDS_REPLY_MASK):
-        raise Exception("Invalid reply %d for a request of type %d" % (reply.getServiceID(), sid))
-    return reply
+class ExtendedUDS(object):
+    def __init__(self, udsChannel, step_by_step=True, debug=True):
+        self.step_by_step = True
+        self.debug = debug
+        self.udsChannel = udsChannel
 
-def send_rdbi(udsChannel, did, timeout = 2000):
-    reply = send(udsChannel, uds.UDS_SERVICE_RDBI, int16tobytes(did), timeout)
-    data = reply.getData()
-    rdid = bytestoint16(extract(data, uds, 'UDS_RDBI_DATA_IDENTIFIER'))
-    if rdid != did:
-        raise Exception("Invalid dataIdentifier %d for a request of type %d" % (rdid, did))
-    return data[uds.UDS_RDBI_DATA_RECORD_OFFSET:]
+    @staticmethod
+    def int16tobytes(number):
+        return struct.pack("<H", number)
 
-def send_wdbi(udsChannel, did, data, timeout = 2000):
-    reply = send(udsChannel, uds.UDS_SERVICE_WDBI, int16tobytes(did) + data, timeout)
-    data = reply.getData()
-    rdid = bytestoint16(extract(data, uds, 'UDS_RDBI_DATA_IDENTIFIER'))
-    if rdid != did:
-        raise Exception("Invalid dataIdentifier %d for a request of type %d" % (rdid, did))
-    return data[uds.UDS_RDBI_DATA_RECORD_OFFSET:]
+    @staticmethod
+    def bytestoint16(bytes):
+        return struct.unpack("<H", bytes)[0]
 
-def change_diagnostic_session(udsChannel, sessionType):
-    type = bytearray([sessionType])
-    reply = send(udsChannel, uds.UDS_SERVICE_DSC, type)
-    reply_data = reply.getData()
-    reply_type = extract(reply_data, uds, 'UDS_DSC_SESSION_TYPE')
-    if type != reply_type:
-        raise Exception("Invalid type %d for a request of type %d" % (type[0], reply_type[0]))
+    def slice_data(data, module, field, offset_str='_OFFSET', len_str='_LEN'):
+        offset = getattr(module, field + offset_str)
+        len = getattr(module, field + len_str)
+        return data[offset:(offset + len)]
 
-def grant_security_access(udsChannel, vehicleSeed):
-    type = bytearray([uds.UDS_SA_TYPES_SEED_2])
-    seed_reply = send(udsChannel, uds.UDS_SERVICE_SA, type)
-    seed_reply_data = seed_reply.getData()
-    reply_type =  extract(seed_reply_data, uds, 'UDS_SA_TYPE')
-    if type != reply_type:
-        raise Exception("Invalid type %d for a request of type %d" % (type[0], reply_type[0]))
-    sessionSeed = seed_reply_data[uds.UDS_SA_SEED_OFFSET:]
-    key = seedkey.calculateKey(vehicleSeed, sessionSeed)
-    type = bytearray([uds.UDS_SA_TYPES_KEY_2])
-    key_reply = send(udsChannel, uds.UDS_SERVICE_SA, type + key)
-    key_reply_data = key_reply.getData()
-    offset = uds.UDS_SA_TYPE_OFFSET
-    len = uds.UDS_SA_TYPE_LEN
-    reply_type = extract(key_reply_data, uds, 'UDS_SA_TYPE')
-    if type != reply_type:
-        raise Exception("Invalid type %d for a request of type %d" % (type[0], reply_type[0]))
+    def send(self, sid, data, timeout=2000):
+        fdata = bytearray([sid])
+        fdata.extend(data)
+        message = uds.UDSMessage(fdata)
+        if self.step_by_step:
+            print("Will send: %s" % (" ".join(['%02x' % (k) for k in fdata])))
+            response = input("Are you sure to send this? ")
+            if response != 'YES':
+                raise Exception("Interrupted by the user")
+        if self.debug:
+            print("Sending: %s" % (" ".join(['%02x' % (k) for k in fdata])))
+        reply = self.udsChannel.send(message, timeout)
+        if self.debug:
+            print("Received: %s" % (" ".join(['%02x' % (k) for k in reply.getData()])))
+        if isinstance(reply, uds.UDSNegativeResponseMessage):
+            raise NegativeResponseException(reply)
+        if reply.getServiceID() != (sid | uds.UDS_REPLY_MASK):
+            raise Exception("Invalid reply %d for a request of type %d" % (reply.getServiceID(), sid))
+        return reply
+
+    def send_rdbi(self, did, timeout=2000):
+        reply = self.send(uds.UDS_SERVICE_RDBI, self.int16tobytes(did), timeout)
+        data = reply.getData()
+        rdid = self.bytestoint16(self.slice_data(data, uds, 'UDS_RDBI_DATA_IDENTIFIER'))
+        if rdid != did:
+            raise Exception("Invalid dataIdentifier %d for a request of type %d" % (rdid, did))
+        return data[uds.UDS_RDBI_DATA_RECORD_OFFSET:]
+
+    def send_wdbi(self, did, data, timeout=2000):
+        reply = self.send(uds.UDS_SERVICE_WDBI, self.int16tobytes(did) + data, timeout)
+        data = reply.getData()
+        rdid = self.bytestoint16(self.slice_data(data, uds, 'UDS_RDBI_DATA_IDENTIFIER'))
+        if rdid != did:
+            raise Exception("Invalid dataIdentifier %d for a request of type %d" % (rdid, did))
+        return data[uds.UDS_RDBI_DATA_RECORD_OFFSET:]
+
+    def change_diagnostic_session(self, sessionType):
+        type = bytearray([sessionType])
+        reply = self.send(uds.UDS_SERVICE_DSC, type)
+        reply_data = reply.getData()
+        reply_type = self.slice_data(reply_data, uds, 'UDS_DSC_SESSION_TYPE')
+        if type != reply_type:
+            raise Exception("Invalid type %d for a request of type %d" % (type[0], reply_type[0]))
+
+    def grant_security_access(self, vehicleSeed):
+        type = bytearray([uds.UDS_SA_TYPES_SEED_2])
+        seed_reply = self.send(uds.UDS_SERVICE_SA, type)
+        seed_reply_data = seed_reply.getData()
+        reply_type = self.slice_data(seed_reply_data, uds, 'UDS_SA_TYPE')
+        if type != reply_type:
+            raise Exception("Invalid type %d for a request of type %d" % (type[0], reply_type[0]))
+        sessionSeed = seed_reply_data[uds.UDS_SA_SEED_OFFSET:]
+        key = seedkey.calculateKey(vehicleSeed, sessionSeed)
+        type = bytearray([uds.UDS_SA_TYPES_KEY_2])
+        key_reply = self.send(uds.UDS_SERVICE_SA, type + key)
+        key_reply_data = key_reply.getData()
+        reply_type = self.slice_data(key_reply_data, uds, 'UDS_SA_TYPE')
+        if type != reply_type:
+            raise Exception("Invalid type %d for a request of type %d" % (type[0], reply_type[0]))
+
 
 def check():
-    assert BitStream._bitarraytobytearray(BitStream._bytearraytobitarray([0x00, 0x38, 0x08, 0xa0, 0x50])) == [0x00, 0x38, 0x08, 0xa0, 0x50]
+    data = [0x00, 0x38, 0x08, 0xa0, 0x50]
+    assert BitStream._bitarraytobytearray(BitStream._bytearraytobitarray(data)) == data
 
     # 3 Flash Turn
     mod = [0x00, 0x38, 0x08, 0xa0, 0x50]
     bs = BitStream(bytearray(mod))
-    assert bs.get_value(19, 3) == 0x1 # Off
+    assert bs.get_value(19, 3) == 0x1  # Off
     bs = BitStream(bytearray([0x00, 0x38, 0x10, 0xa0, 0x50]))
-    assert bs.get_value(19, 3) == 0x2 # On
+    assert bs.get_value(19, 3) == 0x2  # On
     bs.set_value(19, 3, 0x1)
     assert bs.to_bytearray() == mod
 
     # Head light
     mod = [0x00, 0x38, 0x10, 0xa8, 0x50]
     bs = BitStream(bytearray(mod))
-    assert bs.get_value(26, 7) == 0x5 # Light
+    assert bs.get_value(26, 7) == 0x5  # Light
     bs = BitStream(bytearray([0x00, 0x38, 0x10, 0xa0, 0x50]))
-    assert bs.get_value(26, 7) == 0x4 # Medium Light
+    assert bs.get_value(26, 7) == 0x4  # Medium Light
     bs.set_value(26, 7, 0x5)
     assert bs.to_bytearray() == mod
 
     # Head light off timer
     mod = [0x00, 0x38, 0x50, 0xa0, 0x50]
     bs = BitStream(bytearray(mod))
-    assert bs.get_value(16, 7) == 0x2 # 30s
+    assert bs.get_value(16, 7) == 0x2  # 30s
     bs = BitStream(bytearray([0x00, 0x38, 0x10, 0xa0, 0x50]))
-    assert bs.get_value(16, 7) == 0x0 # Not adopted
+    assert bs.get_value(16, 7) == 0x0  # Not adopted
     bs.set_value(16, 7, 0x2)
     assert bs.to_bytearray() == mod
 
     # Rain wiper
     mod = [0x00, 0x38, 0x10, 0x60, 0x50]
     bs = BitStream(bytearray(mod))
-    assert bs.get_value(24, 3) == 0x1 # Off
+    assert bs.get_value(24, 3) == 0x1  # Off
     bs = BitStream(bytearray([0x00, 0x38, 0x10, 0xa0, 0x50]))
-    assert bs.get_value(24, 3) == 0x2 # On
+    assert bs.get_value(24, 3) == 0x2  # On
     bs.set_value(24, 3, 0x1)
     assert bs.to_bytearray() == mod
 
     # Interior light door open
     mod = [0x00, 0x28, 0x10, 0xa0, 0x50]
     bs = BitStream(bytearray(mod))
-    assert bs.get_value(11, 3) == 0x1 # 30 mins
+    assert bs.get_value(11, 3) == 0x1  # 30 mins
     bs = BitStream(bytearray([0x00, 0x38, 0x10, 0xa0, 0x50]))
-    assert bs.get_value(11, 3) == 0x3 # 10 mins
+    assert bs.get_value(11, 3) == 0x3  # 10 mins
     bs.set_value(11, 3, 0x1)
     assert bs.to_bytearray() == mod
 
     # Coming light
     mod = [0x00, 0x38, 0x10, 0xa0, 0x70]
     bs = BitStream(bytearray(mod))
-    assert bs.get_value(32, 7) == 0x3 # 30 mins
+    assert bs.get_value(32, 7) == 0x3  # 30 mins
     bs = BitStream(bytearray([0x00, 0x38, 0x10, 0xa0, 0x50]))
-    assert bs.get_value(32, 7) == 0x2 # 10 mins
+    assert bs.get_value(32, 7) == 0x2  # 10 mins
     bs.set_value(32, 7, 0x3)
     assert bs.to_bytearray() == mod
+
 
 def main(argv):
     check()
@@ -297,6 +314,8 @@ def main(argv):
             libraryPath = discover.getLibrary(device)
     if libraryPath is None:
         raise Exception("No library or device provided")
+
+    # Print information
     print("Library Path:     %s" % (libraryPath))
     library = j2534.J2534Library(libraryPath)
     device = library.open(None)
@@ -304,19 +323,15 @@ def main(argv):
     print("Firmware version: %s" % (firmwareVersion))
     print("DLL version:      %s" % (dllVersion))
     print("API version:      %s" % (apiVersion))
-
     print("\n\n")
 
     vehicleSeed = bytearray([0x4B, 0x30, 0x32, 0x31, 0x36])
     channel = device.connect(j2534.ISO15765, j2534.CAN_ID_BOTH, 125000)
-    udsChannel = uds.UDS_J2534(channel, 0x7BF, 0x07B7, j2534.ISO15765, j2534.ISO15765_FRAME_PAD)
-    de01Data = send_rdbi(udsChannel, 0xde01, 2000)
+    udsChannel = ExtendedUDS(uds.UDS_J2534(channel, 0x7BF, 0x07B7, j2534.ISO15765, j2534.ISO15765_FRAME_PAD))
+    de01Data = udsChannel.send_rdbi(0xde01, 2000)
     print("0xDE01 data: %s" % (" ".join(['%02x' % (k) for k in de01Data])))
+
     return
-    # Medium Light 4
-    # Light 5
-    # 	- mask(NUMERIC): 7
-    #   - shift(INT): 26
 
 
 if __name__ == "__main__":
