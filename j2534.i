@@ -1,4 +1,4 @@
-%module(package="j2534", directors="1") j2534
+%module(directors="1") j2534
 %begin %{
 #include <cmath>
 %}

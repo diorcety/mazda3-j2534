@@ -71,10 +71,12 @@ typedef std::weak_ptr<UDS> UDSWeakPtr;
 
 class UDS_API UDS: public std::enable_shared_from_this<UDS> {
 public:
+    typedef unsigned long TimeType;
+
     UDS(UDS_PID tester, UDS_PID ecu);
     virtual ~UDS();
 
-    virtual UDSMessagePtr send(const UDSMessagePtr request, int timeout) = 0;
+    virtual UDSMessagePtr send(const UDSMessagePtr request, TimeType timeout) = 0;
 
 protected:
     UDSMessagePtr buildMessage(uint8_t *data, size_t length) const;
