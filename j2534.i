@@ -3,12 +3,12 @@
 #include <cmath>
 %}
 %{
-#include "j2534_v0404.h"
-#include "j2534.h"
+#include <j2534_v0404.h>
+#include <j2534.h>
 
 %}
 
-%include "j2534_v0404.h"
+%include <j2534_v0404.h>
 
 //
 // Exceptions
@@ -76,4 +76,4 @@ namespace std {
 %shared_ptr(J2534Device)
 %shared_ptr(J2534Channel)
 
-%include "j2534.h"
+%include <j2534.h>
