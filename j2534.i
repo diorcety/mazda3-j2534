@@ -8,12 +8,15 @@
 
 %}
 
-%include <j2534_v0404.h>
+// Int
+%include "stdint.i"
 
 //
 // Exceptions
 //
 %include "exception.i"
+
+%include <j2534_v0404.h>
 
 %exception {
     try {
