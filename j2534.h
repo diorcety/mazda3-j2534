@@ -12,10 +12,13 @@
 #include <exception>
 #include <vector>
 #include <string>
+
 #ifdef _WIN32
 #include <windows.h>
 #else // _WIN32
+
 #include <dlfcn.h>
+
 #endif // _WIN32
 
 /*
@@ -43,7 +46,7 @@ class J2534_API_API J2534LoadException : public std::exception {
 public:
     J2534LoadException(const char *error);
 
-    virtual const char* what() const noexcept;
+    virtual const char *what() const noexcept;
 
 private:
     std::string mError;
@@ -55,7 +58,8 @@ public:
     J2534FunctionException(long code);
 
     long code() const;
-    virtual const char* what() const noexcept;
+
+    virtual const char *what() const noexcept;
 
 private:
     long mCode;
@@ -67,62 +71,87 @@ private:
  */
 
 class J2534Device;
-typedef std::shared_ptr<J2534Device> J2534DevicePtr;
-typedef std::weak_ptr<J2534Device> J2534DeviceWeakPtr;
-class J2534Channel;
-typedef std::shared_ptr<J2534Channel> J2534ChannelPtr;
-typedef std::weak_ptr<J2534Channel> J2534ChannelWeakPtr;
-class J2534Library;
-typedef std::shared_ptr<J2534Library> J2534LibraryPtr;
-typedef std::weak_ptr<J2534Library> J2534LibraryWeakPtr;
 
-class J2534_API_API J2534Device: public std::enable_shared_from_this<J2534Device> {
+typedef std::shared_ptr <J2534Device> J2534DevicePtr;
+typedef std::weak_ptr <J2534Device> J2534DeviceWeakPtr;
+
+class J2534Channel;
+
+typedef std::shared_ptr <J2534Channel> J2534ChannelPtr;
+typedef std::weak_ptr <J2534Channel> J2534ChannelWeakPtr;
+
+class J2534Library;
+
+typedef std::shared_ptr <J2534Library> J2534LibraryPtr;
+typedef std::weak_ptr <J2534Library> J2534LibraryWeakPtr;
+
+class J2534_API_API J2534Device : public std::enable_shared_from_this<J2534Device> {
     friend class J2534Channel;
+
 public:
     J2534Device(J2534LibraryPtr library, unsigned long device);
+
     virtual ~J2534Device();
 
     virtual J2534ChannelPtr connect(unsigned long ProtocolID, unsigned long Flags, unsigned long BaudRate);
+
     virtual void setProgrammingVoltage(unsigned long PinNumber, unsigned long Voltage);
+
     virtual void readVersion(char *pFirmwareVersion, char *pDllVersion, char *pApiVersion);
+
     virtual void ioctl(unsigned long IoctlID, void *pInput, void *pOutput);
 
     virtual J2534LibraryPtr getLibrary() const;
+
 private:
     J2534LibraryPtr mLibrary;
     unsigned long mDeviceID;
 };
 
-class J2534_API_API J2534Channel: public std::enable_shared_from_this<J2534Channel> {
+class J2534_API_API J2534Channel : public std::enable_shared_from_this<J2534Channel> {
 public:
     typedef unsigned long TimeType;
     typedef unsigned long PeriodicMessage;
     typedef unsigned long MessageFilter;
+
     J2534Channel(J2534DevicePtr device, unsigned long channel);
+
     virtual ~J2534Channel();
 
-    virtual size_t readMsgs(std::vector<PASSTHRU_MSG> &msg,  TimeType Timeout);
-    virtual size_t writeMsgs(std::vector<PASSTHRU_MSG> &msg, TimeType Timeout);
+    virtual size_t readMsgs(std::vector <PASSTHRU_MSG> &msg, TimeType Timeout);
+
+    virtual size_t writeMsgs(std::vector <PASSTHRU_MSG> &msg, TimeType Timeout);
+
     virtual PeriodicMessage startPeriodicMsg(PASSTHRU_MSG *pMsg, TimeType TimeInterval);
+
     virtual void stopPeriodicMsg(PeriodicMessage periodicMessage);
-    virtual MessageFilter startMsgFilter(unsigned long FilterType, PASSTHRU_MSG *pMaskMsg, PASSTHRU_MSG *pPatternMsg, PASSTHRU_MSG *pFlowControlMsg);
+
+    virtual MessageFilter startMsgFilter(unsigned long FilterType, PASSTHRU_MSG *pMaskMsg, PASSTHRU_MSG *pPatternMsg,
+                                         PASSTHRU_MSG *pFlowControlMsg);
+
     virtual void stopMsgFilter(MessageFilter messageFilter);
+
     virtual void ioctl(unsigned long IoctlID, void *pInput, void *pOutput);
 
     virtual J2534DevicePtr getDevice() const;
+
 private:
     J2534DevicePtr mDevice;
     unsigned long mChannelID;
 };
 
-class J2534_API_API J2534Library: public std::enable_shared_from_this<J2534Library> {
+class J2534_API_API J2534Library : public std::enable_shared_from_this<J2534Library> {
     friend class J2534Device;
+
     friend class J2534Channel;
+
 public:
     J2534Library(const char *library);
+
     virtual ~J2534Library();
 
     virtual J2534DevicePtr open(void *pName);
+
     virtual void getLastError(char *pErrorDescription);
 
 private:
