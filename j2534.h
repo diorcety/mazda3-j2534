@@ -89,7 +89,7 @@ class J2534_API_API J2534Device : public std::enable_shared_from_this<J2534Devic
     friend class J2534Channel;
 
 public:
-    J2534Device(J2534LibraryPtr library, unsigned long device);
+    J2534Device(const J2534LibraryPtr &library, unsigned long device);
 
     virtual ~J2534Device();
 
@@ -114,7 +114,7 @@ public:
     typedef unsigned long PeriodicMessage;
     typedef unsigned long MessageFilter;
 
-    J2534Channel(J2534DevicePtr device, unsigned long channel);
+    J2534Channel(const J2534DevicePtr &device, unsigned long channel);
 
     virtual ~J2534Channel();
 

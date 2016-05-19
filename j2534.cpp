@@ -41,7 +41,7 @@ const char *J2534FunctionException::what() const noexcept {
     return buffer;
 }
 
-J2534Device::J2534Device(J2534LibraryPtr library, unsigned long device) : mLibrary(library), mDeviceID(device) {
+J2534Device::J2534Device(const J2534LibraryPtr &library, unsigned long device) : mLibrary(library), mDeviceID(device) {
 
 }
 
@@ -86,7 +86,7 @@ J2534LibraryPtr J2534Device::getLibrary() const {
     return mLibrary;
 }
 
-J2534Channel::J2534Channel(J2534DevicePtr device, unsigned long channel) : mDevice(device), mChannelID(channel) {
+J2534Channel::J2534Channel(const J2534DevicePtr &device, unsigned long channel) : mDevice(device), mChannelID(channel) {
 
 }
 
