@@ -5,6 +5,9 @@
 #include <algorithm>
 #include "j2534.h"
 
+// Enable ISO15765 proxy
+#define ISO15765_PROXY
+
 #define LOG_DEBUG(...) printf(__VA_ARGS__); printf("\n"); fflush(stdout)
 
 class J2534DeviceImpl;
@@ -267,19 +270,25 @@ J2534DeviceImpl::~J2534DeviceImpl() {
 J2534ChannelPtr J2534DeviceImpl::connect(unsigned long ProtocolID, unsigned long Flags, unsigned long BaudRate) {
     unsigned long ChannelID;
     long ret;
+#ifdef ISO15765_PROXY
     if (ProtocolID == ISO15765) {
         ret = mLibrary->mFcts.passThruConnect(mDeviceID, CAN, Flags, BaudRate, &ChannelID);
     } else {
         ret = mLibrary->mFcts.passThruConnect(mDeviceID, ProtocolID, Flags, BaudRate, &ChannelID);
     }
+#else //ISO15765_PROXY
+    ret = mLibrary->mFcts.passThruConnect(mDeviceID, ProtocolID, Flags, BaudRate, &ChannelID);
+#endif //ISO15765_PROXY
     if (ret != STATUS_NOERROR) {
         throw J2534FunctionException(ret);
     }
     
     J2534ChannelPtr retChannel = std::make_shared<J2534ChannelImpl>(std::static_pointer_cast<J2534DeviceImpl>(shared_from_this()), ChannelID);
+#ifdef ISO15765_PROXY
     if (ProtocolID == ISO15765) {
         retChannel = createISO15765Channel(retChannel);
     }
+#endif //ISO15765_PROXY
     return retChannel;
 }
 
@@ -467,7 +476,6 @@ bool ISO15765Transfer::writeMsg(const PASSTHRU_MSG &msg, TimeType Timeout) {
             
             // Fill the buffer
             if(frameName == FirstFrame) {
-                LOG_DEBUG("Write FirstFrame");
                 size_t fullsize = msg.DataSize - mOffset;
                 tmp_msg.Data[J2534_DATA_OFFSET] = (getPci(frameName) & 0xF0)| ((fullsize >> 8) & 0x0F);
                 tmp_msg.Data[J2534_DATA_OFFSET + J2534_PCI_SIZE] = (fullsize & 0xFF);
@@ -476,7 +484,6 @@ bool ISO15765Transfer::writeMsg(const PASSTHRU_MSG &msg, TimeType Timeout) {
                 tmp_msg.DataSize = J2534_DATA_OFFSET + J2534_PCI_SIZE + J2534_LENGTH_SIZE + size;
                 memcpy(&(tmp_msg.Data[J2534_DATA_OFFSET + J2534_PCI_SIZE + J2534_LENGTH_SIZE]), &(msg.Data[mOffset]), size);
             } else {
-                LOG_DEBUG("Write SingleFrame");
                 tmp_msg.Data[J2534_DATA_OFFSET] = (getPci(frameName) & 0xF0)| (size & 0x0F);
                 tmp_msg.DataSize = J2534_DATA_OFFSET + J2534_PCI_SIZE + size;
                 memcpy(&(tmp_msg.Data[J2534_DATA_OFFSET + J2534_PCI_SIZE]), &(msg.Data[mOffset]), size);
@@ -495,7 +502,6 @@ bool ISO15765Transfer::writeMsg(const PASSTHRU_MSG &msg, TimeType Timeout) {
             }
             mState = FLOW_CONTROL_STATE;
         } else if (mState == FLOW_CONTROL_STATE) {
-            LOG_DEBUG("Wait for flow control");
             if(mChannel.mChannel->readMsgs(mMessages, Timeout) != 1) {
                 LOG_DEBUG("Can't read flow control message");
                 goto fail;
@@ -522,7 +528,6 @@ bool ISO15765Transfer::writeMsg(const PASSTHRU_MSG &msg, TimeType Timeout) {
             
             mState = BLOCK_STATE;
         } else if (mState == BLOCK_STATE) {
-            LOG_DEBUG("Write block %d", mSequence);
             prepareSentMessageHeaders(tmp_msg, msg);
             
             // Compute
@@ -561,7 +566,6 @@ bool ISO15765Transfer::writeMsg(const PASSTHRU_MSG &msg, TimeType Timeout) {
         }
     }
     
-    LOG_DEBUG("Message sent !!");
     clear();
     return true;
     
@@ -588,14 +592,12 @@ bool ISO15765Transfer::readMsg(const PASSTHRU_MSG &in_msg, PASSTHRU_MSG &out_msg
             mSequence = 0;
             
             if(frameName == SingleFrame) {
-                LOG_DEBUG("Receiving SingleFrame");
                 size_t size = in_msg.Data[J2534_DATA_OFFSET] & 0x0F;
                 read_msg.DataSize = J2534_DATA_OFFSET + size;
                 memcpy(&(read_msg.Data[mOffset]), &(in_msg.Data[J2534_DATA_OFFSET + J2534_PCI_SIZE]), size);
                 
                 mOffset += size;
             } else if(frameName == FirstFrame) {
-                LOG_DEBUG("Receiving FirstFrame");
                 size_t fullsize = ((in_msg.Data[J2534_DATA_OFFSET] & 0x0F) << 8) | (in_msg.Data[J2534_DATA_OFFSET + J2534_PCI_SIZE] & 0xFF);
                 read_msg.DataSize = J2534_DATA_OFFSET + fullsize;
                 size_t size = CAN_DATA_SIZE - J2534_PCI_SIZE - J2534_LENGTH_SIZE;
@@ -640,7 +642,6 @@ bool ISO15765Transfer::readMsg(const PASSTHRU_MSG &in_msg, PASSTHRU_MSG &out_msg
         
         if((size_t)mOffset >= read_msg.DataSize) {
             memcpy(&out_msg, &read_msg, sizeof(PASSTHRU_MSG));
-            LOG_DEBUG("Message received !!");
             clear();
             return true;
         }
@@ -668,9 +669,10 @@ bool ISO15765Transfer::sendFlowControlMessage(TimeType Timeout) {
     tmp_msg.Data[J2534_DATA_OFFSET] = getPci(FlowControl);
     tmp_msg.Data[J2534_DATA_OFFSET + J2534_PCI_SIZE] = mBs;
     tmp_msg.Data[J2534_DATA_OFFSET + J2534_PCI_SIZE + J2534_BS_SIZE] = mStmin;
+    paddingMessage(tmp_msg);
+    
     mMessageBs = mBs;
     
-    LOG_DEBUG("Sending flow control");
     if(mChannel.mChannel->writeMsgs(messages, Timeout) != 1) {
         return false;
     }
@@ -739,7 +741,16 @@ J2534ChannelISO15765::MessageFilter J2534ChannelISO15765::startMsgFilter(unsigne
         if (pMaskMsg == NULL || pPatternMsg == NULL || pFlowControlMsg == NULL) {
             throw J2534FunctionException(ERR_NULLPARAMETER);
         }
-        MessageFilter mf = mChannel->startMsgFilter(PASS_FILTER, pMaskMsg, pPatternMsg, NULL);
+        PASSTHRU_MSG maskMsg, patternMsg;
+        maskMsg = *pMaskMsg;
+        patternMsg = *pPatternMsg;
+        maskMsg.ProtocolID = patternMsg.ProtocolID = CAN;
+        maskMsg.RxStatus &= ~(ISO15765_PADDING_ERROR | ISO15765_ADDR_TYPE);
+        maskMsg.TxFlags &=~(ISO15765_FRAME_PAD);
+        patternMsg.RxStatus &= ~(ISO15765_PADDING_ERROR | ISO15765_ADDR_TYPE);
+        patternMsg.TxFlags &=~(ISO15765_FRAME_PAD);
+        
+        MessageFilter mf = mChannel->startMsgFilter(PASS_FILTER, &maskMsg, &patternMsg, NULL);
         mTransfers.insert(std::pair<MessageFilter, std::shared_ptr<ISO15765Transfer>>(mf, std::make_shared<ISO15765Transfer>(*this, *pMaskMsg, *pPatternMsg, *pFlowControlMsg)));
         return mf;
     } else {

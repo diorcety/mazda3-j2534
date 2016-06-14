@@ -6,7 +6,11 @@
 #include <thread>
 
 #define UNUSED(x) (void)(x)
+#ifdef DEBUG
 #define LOG_DEBUG(...) printf(__VA_ARGS__); printf("\n"); fflush(stdout)
+#else //DEBUG
+#define LOG_DEBUG(...)
+#endif //DEBUG
 
 class J2534ChannelTest;
 
@@ -94,18 +98,20 @@ void Bus::removeChannel(const J2534ChannelTestPtr &channel) {
 }
 
 static void printMsg(PASSTHRU_MSG &msg) {
+#ifdef DEBUG
     for(unsigned int i = 0; i < msg.DataSize; ++i) {
         printf("%02x ", msg.Data[i]);
     }
     printf("\n");
+#else //DEBUG
+    UNUSED(msg);
+#endif //DEBUG
 }
 
 void Bus::run() {
     std::unique_lock<std::mutex> lck (mMutex);
     while(mContinue) {
-        LOG_DEBUG("Waiting for interruption");
         mInterrupted.wait(lck);
-        LOG_DEBUG("Interrupted");
         
         while(!mIncommingMessageChannels.empty()) {
             J2534ChannelTestPtr channel = mIncommingMessageChannels.front();
@@ -113,6 +119,7 @@ void Bus::run() {
             std::unique_lock<std::mutex> lckC (channel->mMutex);
             
             while(!channel->mOutBuffers.empty()) {
+                // Dispatch the incoming message to the other channel on the bus
                 PASSTHRU_MSG &msg = channel->mOutBuffers.front();
                 printMsg(msg);
                 for(J2534ChannelTestPtr &c: mChannels) {
@@ -295,13 +302,12 @@ int main(int argc, char *argv[]) {
     pid2Data(pid1, flowControlMsg2.Data);
     c2->startMsgFilter(FLOW_CONTROL_FILTER, &maskMsg2, &patternMsg2, &flowControlMsg2);
     
+    
+    // Start the test
     int written = 0;
     int read = 0;
-    
     printf("Start\n");
     fflush(stdout);
-    
-    
     std::thread t([&]() {
         written = c1->writeMsgs(msgs1, 2000);
     });
@@ -314,6 +320,7 @@ int main(int argc, char *argv[]) {
     t2.join();
     
     
+    // Check the test
     if(msgs2[0].DataSize != (J2534_DATA_OFFSET + size)) {
         LOG_DEBUG("Wrong size");
         return -1;
@@ -330,6 +337,7 @@ int main(int argc, char *argv[]) {
     
     printf("Written %d\n", written);
     printf("Read %d\n", read);
+    printf("Test OK!\n");
     
     return 0;
 }
