@@ -55,6 +55,24 @@
 %catches(J2534FunctionException) J2534Library::ioctl;
 
 //
+// Custom fcts
+//
+%extend J2534Channel
+{
+    void setJ1962Pins(unsigned long parameter)
+    {
+        SCONFIG sc;
+        SCONFIG_LIST scl;
+        scl.NumOfParams = 1;
+        scl.ConfigPtr = &sc;
+        sc.Parameter = J1962_PINS;
+        sc.Value = parameter;
+        self->ioctl(SET_CONFIG, &scl, NULL);
+    }
+};
+
+
+//
 // Specific behaviours
 //
 %include "cstring.i"
