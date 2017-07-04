@@ -65,7 +65,7 @@ J2534Device::J2534Device(const J2534LibraryPtr &library, unsigned long device) :
 J2534Device::~J2534Device() {
     long ret = mLibrary->mFcts.passThruClose(mDeviceID);
     if (ret != STATUS_NOERROR) {
-        throw J2534FunctionException(ret);
+        //throw J2534FunctionException(ret);
     }
 }
 
@@ -110,7 +110,7 @@ J2534Channel::J2534Channel(const J2534DevicePtr &device, unsigned long channel) 
 J2534Channel::~J2534Channel() {
     long ret = mDevice->mLibrary->mFcts.passThruDisconnect(mChannelID);
     if (ret != STATUS_NOERROR) {
-        throw J2534FunctionException(ret);
+        //throw J2534FunctionException(ret);
     }
 }
 
